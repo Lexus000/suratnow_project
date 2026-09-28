@@ -1,0 +1,100 @@
+name: Playwright E2E
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      BACKEND_REPOSITORY: ${{ secrets.BACKEND_REPOSITORY }}
+      BACKEND_REF: ${{ secrets.BACKEND_REF || 'main' }}
+      BACKEND_TOKEN: ${{ secrets.BACKEND_TOKEN || github.token }}
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: suratnow_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout frontend
+        uses: actions/checkout@v4
+
+      # The two projects are separate workspaces locally. For CI, configure
+      # BACKEND_REPOSITORY as a repository secret, or place the backend in a
+      # suratnow-backend/ subdirectory of the same repository.
+      - name: Checkout backend repository
+        if: ${{ env.BACKEND_REPOSITORY != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.BACKEND_REPOSITORY }}
+          ref: ${{ env.BACKEND_REF }}
+          path: suratnow-backend
+          token: ${{ env.BACKEND_TOKEN }}
+
+      - name: Verify backend checkout
+        shell: bash
+        run: test -f "${GITHUB_WORKSPACE}/suratnow-backend/artisan"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, dom, fileinfo, pdo_mysql
+          coverage: none
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        working-directory: suratnow-backend
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E suite
+        env:
+          E2E_BACKEND_DIR: ${{ github.workspace }}/suratnow-backend
+          E2E_DB_HOST: 127.0.0.1
+          E2E_DB_PORT: 3306
+          E2E_DB_DATABASE: suratnow_e2e
+          E2E_DB_USERNAME: root
+          E2E_DB_PASSWORD: root
+          E2E_PHP_BIN: php
+        run: npm run test:e2e:ci
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+
+      - name: Upload traces and screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results/
+          if-no-files-found: ignore

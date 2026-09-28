@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+@theme {
+  --color-primary: #0284c7;
+  --color-primary-dark: #0369a1;
+  --color-primary-light: #38bdf8;
+  
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-white/70 backdrop-blur-lg border border-white/20 shadow-lg;
+  }
+  
+  .glass-card {
+    @apply bg-white/80 backdrop-blur-md border border-white/30 shadow-md rounded-2xl;
+  }
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 font-sans antialiased min-h-screen;
+}
+
+@layer base {
+  html {
+    /* Scales down the entire app by setting 1rem = 14px (87.5% of default 16px) */
+    font-size: 14px; 
+  }
+}
